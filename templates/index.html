@@ -3,23 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat with GPT as a CS Tutor</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <title>CSCI 1133 Tutor</title>
 </head>
 <body>
-    <h1>Ask a Computer Science Tutor</h1>
-    <form action="/" method="post">
-        <textarea name="user_input" placeholder="Type your question here..." rows="4" cols="50"></textarea><br>
-        <input type="submit" value="Submit">
-        <input type="submit" name="reset" value="Reset">
-    </form>
-    <div>
-        <h2>Conversation:</h2>
-        {% for entry in conversation %}
-            <p><strong>Q:</strong> {{ entry.question }}</p>
-            <p><strong>A:</strong> {{ entry.answer }}</p>
-        {% else %}
-            <p>No conversation yet.</p>
-        {% endfor %}
-    </div>
+    <h1>Ask the CS1133 Tutor!</h1>
+    <input type="text" id="inputText" placeholder="Type your message">
+    <button onclick="sendMessage()">Send</button>
+    <div id="responses"></div>
+    <ul id="history"></ul>
+    
+    <script>
+    let history = [];
+    
+    function sendMessage() {
+        let text = $('#inputText').val();
+        $.post('/submit', {text: text}, function() {
+            $('#inputText').val(''); // Clear input box after sending
+        });
+        setupStream();
+    }
+    
+    function setupStream() {
+        const eventSource = new EventSource("/submit");
+        eventSource.onmessage = function(event) {
+            $('#responses').html(event.data);  // Display the latest response
+            updateHistory(event.data);  // Update the history
+        };
+        eventSource.onerror = function() {
+            eventSource.close();
+        };
+    }
+    
+    function updateHistory(response) {
+        history.unshift(response);  // Add new response to the front
+        if (history.length > 5) {
+            history.pop();  // Remove the oldest if more than 5
+        }
+        displayHistory();
+    }
+    
+    function displayHistory() {
+        let html = '';
+        history.forEach((item) => {
+            html += `<li>${item}</li>`;
+        });
+        $('#history').html(html);
+    }
+    </script>
+    
 </body>
 </html>

@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, session, redirect, url_for
+from flask import Flask, request, session, render_template, jsonify, Response, redirect, url_for
 from openai import OpenAI
 from dotenv import load_dotenv
 from os import getenv
+import time
 
 # Load the .env file
 load_dotenv()
@@ -15,48 +16,41 @@ client.api_key = getenv('OPENAI_API_KEY')
 
 prompt_context = getenv('PROMPT_CONTEXT')
 
-@app.route('/', methods=['GET', 'POST'])
-def home():
+# Route to serve the webpage
+@app.route("/")
+def index():
+    return render_template('index.html')
 
-    if 'messages' not in session:
-        print("*** SETTING MESSAGES ***")
+# Route to handle form submission and stream responses
+@app.route("/submit", methods=["POST"])
+def submit():
+    if 'reset' in request.form:
+        print("*** RESETTING MESSAGES ***")
         session['messages'] = []
-    if 'conversation' not in session:
-        print("*** SETTING CONVERSATION ***")
+        print("*** RESETTING CONVERSATION ***")
         session['conversation'] = []
-        
-    if request.method == 'POST':
-        if 'reset' in request.form:
-            print("*** RESETTING MESSAGES ***")
-            session['messages'] = []
-            print("*** RESETTING CONVERSATION ***")
-            session['conversation'] = []
-            return redirect(url_for('home'))
+        return redirect(url_for('index'))
 
-        user_input = request.form.get('user_input')
-        if user_input:
-            prompt = prompt_context + user_input 
+    prompt = request.form['text']
+    session['messages'].append({"role": "user", "content": prompt})
+    if len(session['messages']) > 5:
+        session['messages'].pop(0)
+    session.modified = True
 
-            # only send the last 5 messages to avoid hallucination 
-            session['messages'].append({"role": "user", "content": prompt})
-            if len(session['messages']) > 5:
-                session['messages'].pop(0)
+    return Response(generate_chat_stream(session['messages']), mimetype='text/event-stream')
 
-            chat_completion = client.chat.completions.create(
-                messages=session['messages'],
+
+def generate_chat_stream(msgs):
+     chat_stream = client.chat.completions.create(
+                messages=msgs,
                 model="gpt-4-turbo",
                 # Sets the sampling temperature to control randomness (0 makes output deterministic, 1 maximizes randomness, with 0.2 being more focused and less random).
                 temperature=0.2,
-                stream=False 
+                stream=True 
             )
+     for message in chat_stream:
+        if 'content' in message:
+            yield f"data: {message['content']}\n\n"
 
-            print(f"\nquestion: {user_input} -- answer: {chat_completion.choices[0].message.content[:20]}")
-
-            session['conversation'].append({'question': user_input, 'answer': chat_completion.choices[0].message.content})
-            print(f"session['conversation']: {session['conversation']}")
-            session.modified = True
-
-    return render_template('index.html', conversation=session.get('conversation', []))
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True)
